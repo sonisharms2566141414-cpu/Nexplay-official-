@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Racing car 3D</title>
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700&display=swap');
+    body { margin:0; overflow:hidden; background: #000; font-family: 'Orbitron', sans-serif; user-select: none; touch-action: none; }
+
+    #menuScreen, #storeScreen, #settingsScreen, #aboutScreen, #gameOver {
+        position:fixed; width:100%; height:100%; background:rgba(0,0,0,0.95);
+        color:white; display:none; flex-direction:column;
+        justify-content:center; align-items:center; z-index:100; padding: 20px; box-sizing: border-box;
+    }
+
+    .menu-btn {
+        background: linear-gradient(45deg, #00c6ff, #0072ff);
+        border: none; color: white; padding: 12px 30px; margin: 8px;
+        font-size: 1rem; border-radius: 30px; cursor: pointer; width: 260px;
+        font-family: 'Orbitron', sans-serif; transition: 0.3s;
+    }
+    .menu-btn:active { transform: scale(0.9); border: 2px solid white; }
+    .active-ctrl { border: 3px solid yellow; box-shadow: 0 0 15px yellow; }
+
+    .about-box {
+        background: rgba(255,255,255,0.1);
+        padding: 20px; border-radius: 15px; max-width: 550px;
+        max-height: 60vh; overflow-y: auto; text-align: left;
+        line-height: 1.6; font-family: sans-serif; border: 1px solid cyan;
+    }
+    .about-box::-webkit-scrollbar { width: 6px; }
+    .about-box::-webkit-scrollbar-thumb { background: cyan; border-radius: 10px; }
+
+    #scoreUI { position:fixed; top:10px; left:10px; color:white; font-size:20px; z-index:20; }
+    #coinUI { position:fixed; top:10px; right:10px; color: gold; font-size:20px; z-index:20; }
+
+    #uiLayer { display: block; }
+    .controls { position:fixed; bottom:30px; width:100%; display:flex; justify-content:space-between; padding:0 40px; box-sizing: border-box; z-index:20; }
+    .brake-pos { position:fixed; bottom:30px; left:50%; transform:translateX(-50%); z-index:20; }
+    .btn { width:75px; height:75px; background:rgba(255,255,255,0.2); border:2px solid white; border-radius:50%; text-align:center; line-height:75px; font-size:28px; color:white; }
+</style>
+</head>
+<body>
+
+<div id="menuScreen" style="display: flex;">
+    <h1 style="color:cyan; margin-bottom: 20px; text-align: center;">Racing car 3D</h1>
+    <button class="menu-btn" onclick="startGame()">START GAME</button>
+    <button class="menu-btn" onclick="showSub('storeScreen')">COLOR STORE</button>
+    <button class="menu-btn" onclick="showSub('settingsScreen')">SETTINGS</button>
+    <button class="menu-btn" style="background: linear-gradient(45deg, #f093fb, #f5576c);" onclick="showSub('aboutScreen')">ABOUT THE GAME</button>
+</div>
+
+<div id="aboutScreen">
+    <h2 style="color:cyan;">ABOUT THE GAME</h2>
+    <div class="about-box">
+        <p>Welcome to <b>Racing car 3D</b>! Here, you have to save your car from obstacles. You will get two options to control the car (Left/Right), which you can find in the <b>Settings</b>. You can change the options according to your comfort.</p>
+        <p>If you want to give any feedback about the game—like how you liked the game (good or bad) or what changes should be made in the game—then please comment on the latest video of our YouTube channel.</p>
+        <p><b>YouTube Channel Name:</b> Nexplay official </p>
+    </div>
+    <button class="menu-btn" style="background:#444; margin-top: 20px;" onclick="back()">BACK</button>
+</div>
+
+<div id="settingsScreen">
+    <h2 style="color:yellow;">CONTROLS</h2>
+    <button id="btnCtrl" class="menu-btn active-ctrl" onclick="setCtrl('buttons')">BUTTONS MODE</button>
+    <button id="dragCtrl" class="menu-btn" onclick="setCtrl('drag')">DRAG MODE</button>
+    <button class="menu-btn" style="background:#444" onclick="back()">BACK</button>
+</div>
+
+<div id="storeScreen">
+    <h2 id="storeCoins">Coins: 0</h2>
+    <button class="menu-btn" onclick="buy(0xffffff, 'white')">WHITE (400)</button>
+    <button class="menu-btn" onclick="buy(0x111111, 'black')">BLACK (750)</button>
+    <button class="menu-btn" onclick="buy(0x00ff00, 'green')">GREEN (550)</button>
+    <button class="menu-btn" style="background:#444" onclick="back()">BACK</button>
+</div>
+
+<div id="gameOver">
+    <h1 style="color:red; font-size:3rem; text-shadow: 0 0 15px white;">CRASHED!</h1>
+    <p id="resScore" style="font-size: 1.5rem; margin: 5px;">Score: 0</p>
+    <p id="highScoreText" style="font-size: 1.2rem; color: #00ff00; margin: 5px;">Highest Score: 0</p>
+    <button class="menu-btn" onclick="retryMap()">RETRY</button>
+    <button class="menu-btn" onclick="goToMainMenu()" style="background:#444">MAIN MENU</button>
+</div>
+
+<div id="scoreUI">Score: 0</div>
+<div id="coinUI">🪙 0</div>
+
+<div id="uiLayer">
+    <div class="controls">
+        <div id="lBtn" class="btn">⬅️</div>
+        <div id="rBtn" class="btn">➡️</div>
+    </div>
+    <div class="brake-pos">
+        <div id="bBtn" class="btn">⛔</div>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+let engineOsc, engineGain;
+
+function startEngine() {
+    if(engineOsc) stopEngine();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    engineOsc = audioCtx.createOscillator(); 
+    engineGain = audioCtx.createGain();
+    engineOsc.type = 'sawtooth'; 
+    engineOsc.frequency.setValueAtTime(45, audioCtx.currentTime);
+    engineGain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+    engineOsc.connect(engineGain); 
+    engineGain.connect(audioCtx.destination);
+    engineOsc.start();
+}
+
+function stopEngine() { 
+    if(engineGain) {
+        engineGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
+        setTimeout(() => { if(engineOsc) { engineOsc.stop(); engineOsc = null; } }, 100);
+    }
+}
+
+let active = false, score = 0;
+let totalCoins = parseInt(localStorage.getItem('carCoins')) || 0;
+let sessionCoins = 0; 
+let hScore = parseInt(localStorage.getItem('carHS')) || 0;
+let ctrl = 'buttons', dragX = 0;
+
+let scene = new THREE.Scene(); scene.background = new THREE.Color(0x87ceeb); 
+let camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
+let renderer = new THREE.WebGLRenderer({antialias: true});
+renderer.setSize(innerWidth, innerHeight); document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+let sun = new THREE.DirectionalLight(0xffffff, 1.2); sun.position.set(10, 50, 10); scene.add(sun);
+
+let road = new THREE.Mesh(new THREE.PlaneGeometry(16, 10000), new THREE.MeshPhongMaterial({color: 0x222222}));
+road.rotation.x = -Math.PI/2; scene.add(road);
+let ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 10000), new THREE.MeshPhongMaterial({color: 0x0a2f0a}));
+ground.rotation.x = -Math.PI/2; ground.position.y = -0.1; scene.add(ground);
+
+for(let i=0; i<250; i++) {
+    let tree = new THREE.Group();
+    let trunk = new THREE.Mesh(new THREE.BoxGeometry(0.6, 4, 0.6), new THREE.MeshPhongMaterial({color: 0x4b3621}));
+    let leaf = new THREE.Mesh(new THREE.ConeGeometry(2.5, 6, 8), new THREE.MeshPhongMaterial({color: 0x0a3d0a}));
+    leaf.position.y = 4; tree.add(trunk, leaf);
+    tree.position.set(Math.random() > 0.5 ? 12+Math.random()*15 : -12-Math.random()*15, 2, -i*15);
+    scene.add(tree);
+}
+
+let car = new THREE.Group();
+let carBody = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.7, 3.2), new THREE.MeshPhongMaterial({color: 0xff0000}));
+carBody.position.y = 0.6; car.add(carBody);
+let cabin = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.6, 1.6), new THREE.MeshPhongMaterial({color: 0x000000}));
+cabin.position.set(0, 1.1, 0); car.add(cabin);
+scene.add(car);
+
+function showSub(id) { 
+    if(id === 'storeScreen') document.getElementById('storeCoins').innerText = "Coins: " + totalCoins;
+    document.getElementById('menuScreen').style.display='none'; 
+    document.getElementById(id).style.display='flex'; 
+}
+function back() { document.querySelectorAll('div[id$="Screen"], #storeScreen, #aboutScreen').forEach(d=>d.style.display='none'); document.getElementById('menuScreen').style.display='flex'; }
+
+function setCtrl(type) {
+    ctrl = type;
+    document.getElementById('btnCtrl').classList.toggle('active-ctrl', type === 'buttons');
+    document.getElementById('dragCtrl').classList.toggle('active-ctrl', type === 'drag');
+    document.getElementById('uiLayer').style.display = (type === 'buttons' ? 'block' : 'none');
+}
+
+let input = {l:false, r:false, b:false};
+function bind(id, k) {
+    let el = document.getElementById(id);
+    el.onpointerdown = (e) => { e.preventDefault(); input[k] = true; };
+    el.onpointerup = (e) => { e.preventDefault(); input[k] = false; };
+}
+bind('lBtn','l'); bind('rBtn','r'); bind('bBtn','b');
+
+window.onpointermove = (e) => { if(ctrl === 'drag' && active) dragX = (e.clientX / innerWidth) * 2 - 1; };
+
+let enemies = [];
+function spawn() {
+    if(!active) return;
+    let e = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1, 3), new THREE.MeshPhongMaterial({color: 0xffcc00}));
+    e.position.set((Math.random()*14)-7, 0.5, car.position.z - 130);
+    e.userData.speed = 1.0 + Math.random(); 
+    scene.add(e); enemies.push(e);
+}
+setInterval(spawn, 400);
+
+function startGame() { active=true; document.getElementById('menuScreen').style.display='none'; startEngine(); }
+
+// Reset function for game logic
+function resetGameState() {
+    score = 0;
+    sessionCoins = 0; 
+    car.position.set(0, 0, 0);
+    dragX = 0;
+    input.l = input.r = input.b = false;
+    enemies.forEach(e => scene.remove(e));
+    enemies = [];
+    updateCoinUI();
+    document.getElementById('scoreUI').innerText = "Score: 0";
+    camera.position.set(0, 5, 10);
+    camera.lookAt(0, 1, -15);
+}
+
+function retryMap() {
+    resetGameState();
+    active = true;
+    document.getElementById('gameOver').style.display = 'none';
+    startEngine();
+}
+
+// FIX: Naya function jo Main Menu par le jayega bina reload kiye
+function goToMainMenu() {
+    active = false;
+    stopEngine();
+    resetGameState();
+    document.getElementById('gameOver').style.display = 'none';
+    document.getElementById('menuScreen').style.display = 'flex';
+}
+
+function updateCoinUI() {
+    document.getElementById('coinUI').innerText = "🪙 " + (totalCoins + sessionCoins);
+}
+
+function buy(hexColor, name) {
+    let prices = { 'white': 400, 'green': 550, 'black': 750 };
+    let cost = prices[name];
+    if (totalCoins >= cost) {
+        totalCoins -= cost;
+        localStorage.setItem('carCoins', totalCoins);
+        carBody.material.color.setHex(hexColor);
+        updateCoinUI();
+        document.getElementById('storeCoins').innerText = "Coins: " + totalCoins;
+    }
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+    if(!active) {
+        renderer.render(scene, camera);
+        return;
+    }
+    let targetVz = input.b ? -0.1 : -0.35; 
+    let vz = targetVz; 
+    let vx = 0;
+    if(ctrl === 'buttons') {
+        if(input.l) vx = -0.12;
+        if(input.r) vx = 0.12;
+    } else {
+        let targetX = dragX * 8;
+        vx = (targetX - car.position.x) * 0.1;
+    }
+    car.position.x += vx; car.position.z += vz;
+    if(car.position.x > 7.1) car.position.x = 7.1;
+    if(car.position.x < -7.1) car.position.x = -7.1;
+    camera.position.set(car.position.x, 5, car.position.z + 10);
+    camera.lookAt(car.position.x, 1, car.position.z - 15);
+    
+    score += Math.abs(vz);
+    
+    let newSessionCoins = Math.floor(score / 500) * 10;
+    if(newSessionCoins > sessionCoins) {
+        sessionCoins = newSessionCoins;
+        updateCoinUI();
+    }
+
+    document.getElementById('scoreUI').innerText = "Score: " + Math.floor(score);
+    
+    enemies.forEach(e => {
+        e.position.z += e.userData.speed;
+        if(Math.abs(e.position.z - car.position.z) < 2.5 && Math.abs(e.position.x - car.position.x) < 1.5) { crash(); }
+    });
+    renderer.render(scene, camera);
+}
+
+function crash() {
+    active = false; stopEngine();
+    let finalScore = Math.floor(score);
+    
+    totalCoins += sessionCoins;
+    localStorage.setItem('carCoins', totalCoins);
+    sessionCoins = 0;
+
+    if(finalScore > hScore) { hScore = finalScore; localStorage.setItem('carHS', hScore); }
+    document.getElementById('resScore').innerText = "Score: " + finalScore;
+    document.getElementById('highScoreText').innerText = "Highest Score: " + hScore;
+    document.getElementById('gameOver').style.display = 'flex';
+    updateCoinUI();
+}
+
+window.onload = () => { 
+    document.getElementById('menuScreen').style.display = 'flex';
+    updateCoinUI();
+};
+animate();
+</script>
+</body>
